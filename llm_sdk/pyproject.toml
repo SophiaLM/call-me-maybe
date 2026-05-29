@@ -1,0 +1,13 @@
+[project]
+name = "llm-sdk"
+version = "0.1.0"
+description = "LLM SDK mock for call_me_maybe"
+requires-python = ">=3.10"
+dependencies = []
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["llm_sdk"]
