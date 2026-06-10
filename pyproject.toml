@@ -32,10 +32,4 @@ disallow_untyped_defs = true
 check_untyped_defs = true
 strict = false
 
-[tool.flake8]
-max_line_length = 88
-extend-ignore = [
-    "E501",
-    "W503",
-]
 exclude = [".venv", "venv", "__pycache__", ".mypy_cache", ".pytest_cache"]

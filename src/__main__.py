@@ -7,9 +7,6 @@ Orchestrates the full pipeline:
 4. Generate function calls using constrained decoding
 5. Validate and write output
 
-Usage:
-    uv run python -m src
-    uv run python -m src --input <file> --output <file>
 """
 
 from __future__ import annotations

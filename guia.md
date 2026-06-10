@@ -101,14 +101,14 @@ El algoritmo de decodificación restringida funciona en 4 pasos por cada token g
 3. **Filtrado de tokens**: Se buscan en el vocabulario los tokens cuyo primer carácter coincida con los esperados, pre-indexados para eficiencia O(1).
 
 4. **Validación de esquema**: Cada token candidato se evalúa simulando su adición:
-   - ¿Sigue siendo el resultado un prefijo JSON válido? (`_is_valid_json_prefix`)
-   - ¿Es compatible con el esquema de la función? (`_matches_function_schema`)
+   - ¿Sigue siendo el resultado un prefijo JSON válido? (`is_valid_json_prefix`)
+   - ¿Es compatible con el esquema de la función? (`matches_function_schema`)
 
 ### 5. Tipos de Validación
 
 El sistema tiene dos capas de validación:
 
-**Capa 1 — `_get_expected_first_chars`:**
+**Capa 1 — `get_expected_first_chars`:**
 - Determina los primeros caracteres estructuralmente válidos según el estado JSON actual.
 - Para claves en depth 1: fuerza el orden "function" antes de "arguments".
 - Para nombres de función: solo caracteres que sean prefijo de una función registrada.
@@ -118,7 +118,7 @@ El sistema tiene dos capas de validación:
 **Capa 2 — `_validate_incomplete_schema`:**
 - Defense-in-depth que valida el texto parcial completo.
 - Verifica claves vacías, claves duplicadas, orden de claves, nombres de función válidos, nombres de parámetros válidos, tipos de valores.
-- Corre después de `_is_valid_json_prefix` para atrapar cualquier caso que `_get_expected_first_chars` no cubra.
+- Corre después de `is_valid_json_prefix` para atrapar cualquier caso que `get_expected_first_chars` no cubra.
 
 ### 6. Módulo de Vocabulary
 
@@ -187,7 +187,7 @@ Jerarquía de excepciones:
 ### `src/decoder.py` (Core del Proyecto)
 
 **Funciones auxiliares**:
-- `_is_valid_json_prefix(text)`: Determina si un string es prefijo JSON válido. Estrategia:
+- `is_valid_json_prefix(text)`: Determina si un string es prefijo JSON válido. Estrategia:
   1. Verifica que el primer carácter sea válido (`{`, `"`, `[`, dígito, `t`, `f`, `n`, `-`).
   2. Intenta `json.loads()` — si funciona, es JSON completo válido.
   3. Si falla, analiza `JSONDecodeError.pos`:
@@ -195,7 +195,7 @@ Jerarquía de excepciones:
      - Error antes del final → error de sintaxis → prefijo inválido.
      - `error_pos == 0` → verifica si es prefijo de keyword JSON (`true`/`false`/`null`) o número negativo (`-`).
   4. Casos especiales: strings abiertos, escapes, caracteres estructurales.
-- `_get_partial_prefix_state(text)`: Analiza el texto parcial carácter por carácter. Retorna:
+- `get_partial_prefix_state(text)`: Analiza el texto parcial carácter por carácter. Retorna:
   - `in_string`: ¿Estamos dentro de un string?
   - `escaped`: ¿Estamos en modo escape?
   - `brace_depth`: profundidad actual de `{}`.
@@ -206,14 +206,14 @@ Jerarquía de excepciones:
   - `reading_value`: ¿Estamos leyendo un valor (después de `:` y `"`)?
   - `last_key_at_depth`: mapeo depth → última clave leída.
   - `completed_values`: mapeo depth → dict de clave→valor completados.
-- `_get_expected_first_chars(state, fn_map)`: Dado el estado, devuelve los caracteres válidos para el siguiente token. Lógica principal:
+- `get_expected_first_chars(state, fn_map)`: Dado el estado, devuelve los caracteres válidos para el siguiente token. Lógica principal:
   - En strings: restringe primeros caracteres según contexto (clave vs valor, depth, función vs argumento).
   - Fuera de strings: determina caracteres según `last_significant`.
   - Para funciones y parámetros: solo permite caracteres que sean prefijo de nombres válidos.
   - Para parámetros numéricos: excluye `"` (no se permiten strings).
   - Cuando no quedan parámetros: elimina `,` para forzar cierre.
 - `_has_duplicate_keys(text)`: Detecta claves duplicadas en JSON usando `json.JSONDecoder(object_pairs_hook=hook)`. El hook se ejecuta en cada nivel del JSON, detectando duplicados a cualquier profundidad.
-- `_matches_function_schema(text, fn_map)`: Verifica que el texto generado sea compatible con el esquema de funciones:
+- `matches_function_schema(text, fn_map)`: Verifica que el texto generado sea compatible con el esquema de funciones:
   1. Primero verifica duplicados con `_has_duplicate_keys`.
   2. Si el JSON es completo, usa `_validate_complete_schema`.
   3. Si es incompleto, usa `_validate_incomplete_schema`.
@@ -223,7 +223,7 @@ Jerarquía de excepciones:
   - Valida que los argumentos sean un objeto con claves/tipos correctos.
 - `_validate_incomplete_schema(text, fn_map)`: Valida un string JSON incompleto. Estrategia:
   1. Parsea objetos JSON completos del texto con `raw_decode`.
-  2. Analiza el estado con `_get_partial_prefix_state`.
+  2. Analiza el estado con `get_partial_prefix_state`.
   3. Verifica (en orden):
      - (1) No claves vacías en ningún nivel.
      - (2) Claves en depth 1 deben ser prefijo de "function"/"arguments".
@@ -242,14 +242,14 @@ Jerarquía de excepciones:
 - `set_vocabulary(vocab)`: Configura el vocabulario (actualmente no hace nada extra).
 - `reset()`: Reinicia `self.partial` a string vacío.
 - `get_valid_token_ids(logits, vocab)`: Enmascara logits para solo permitir tokens válidos:
-  1. Obtiene estado actual del texto parcial con `_get_partial_prefix_state`.
-  2. Determina primeros caracteres esperados con `_get_expected_first_chars`.
+  1. Obtiene estado actual del texto parcial con `get_partial_prefix_state`.
+  2. Determina primeros caracteres esperados con `get_expected_first_chars`.
   3. Si no hay caracteres esperados: permite solo EOS.
   4. Obtiene tokens candidatos por primer carácter desde el vocabulario.
-  5. Valida cada candidato contra `_is_valid_json_prefix` + `_matches_function_schema`.
+  5. Valida cada candidato contra `is_valid_json_prefix` + `matches_function_schema`.
   6. Si ningún candidato es válido: permite solo EOS.
   7. Retorna logits enmascarados (solo tokens válidos mantienen su logit original).
-- `_is_complete_call(text)`: Verifica si el texto es una llamada a función JSON completa: parseable con `json.loads`, tiene "function" y "arguments", y brace_count == 0.
+- `is_complete_call(text)`: Verifica si el texto es una llamada a función JSON completa: parseable con `json.loads`, tiene "function" y "arguments", y brace_count == 0.
 - `step(token_id, token_str)`: Avanza el decoder con un token generado:
   - Si el texto ya es una llamada completa → return False.
   - Si el token es EOS → return False.
@@ -310,7 +310,7 @@ Interacción con el LLM y generación de llamadas a función.
 
 **Problema**: `json.loads()` lanza `JSONDecodeError` para todo JSON incompleto, pero no todos los JSON incompletos son prefijos válidos. Había que distinguir entre "incompleto pero válido" (ej: `{"function"`) y "sintácticamente inválido" (ej: `{"function" 1}`).
 
-**Solución**: Se implementó `_is_valid_json_prefix()` que:
+**Solución**: Se implementó `is_valid_json_prefix()` que:
 1. Intenta `json.loads()` → si funciona, es JSON completo válido.
 2. Si falla, analiza `JSONDecodeError.pos`:
    - Si el error está al final del string → es incompleto → prefijo válido.
@@ -324,7 +324,7 @@ Interacción con el LLM y generación de llamadas a función.
 **Solución**: Validación completa para cada token candidato:
 1. Se obtienen todos los tokens cuyo primer carácter coincide con los esperados.
 2. Para cada uno, se simula la concatenación: `partial + token_str`.
-3. Se valida el resultado completo contra `_is_valid_json_prefix()` y `_matches_function_schema()`.
+3. Se valida el resultado completo contra `is_valid_json_prefix()` y `matches_function_schema()`.
 4. Solo los tokens que pasan ambas validaciones se mantienen.
 
 ### Error 3: Formato de salida LLM vs archivo final
@@ -340,7 +340,7 @@ Interacción con el LLM y generación de llamadas a función.
 
 **Problema**: `json.loads("t")` devuelve `JSONDecodeError` con `pos=0` porque la keyword "true" está incompleta. Lo mismo para `"tr"`, `"tru"`, `"f"`, `"fa"`, `"n"`, `"nu"`, `"nul"`. El código original trataba `error_pos == 0` como error de sintaxis, pero en realidad es un prefijo válido de keyword JSON.
 
-**Solución**: En `_is_valid_json_prefix()`, cuando `error_pos == 0`, se verifica si el texto es prefijo de alguna keyword JSON (`"true"`, `"false"`, `"null"`) o si es un número negativo incompleto (`"-"`). Si es así, se retorna True.
+**Solución**: En `is_valid_json_prefix()`, cuando `error_pos == 0`, se verifica si el texto es prefijo de alguna keyword JSON (`"true"`, `"false"`, `"null"`) o si es un número negativo incompleto (`"-"`). Si es así, se retorna True.
 
 ```python
 if error_pos == 0:
