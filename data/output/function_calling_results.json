@@ -1,0 +1,90 @@
+[
+  {
+    "prompt": "What is the sum of 2 and 3?",
+    "fn_name": "fn_add_numbers",
+    "args": {
+      "a": 0,
+      "b": 0
+    }
+  },
+  {
+    "prompt": "What is the sum of 265 and 345?",
+    "fn_name": "fn_add_numbers",
+    "args": {
+      "a": 0,
+      "b": 0
+    }
+  },
+  {
+    "prompt": "Greet shrek",
+    "fn_name": "fn_add_numbers",
+    "args": {
+      "a": 0,
+      "b": 0
+    }
+  },
+  {
+    "prompt": "Greet john",
+    "fn_name": "fn_add_numbers",
+    "args": {
+      "a": 0,
+      "b": 0
+    }
+  },
+  {
+    "prompt": "Reverse the string 'hello'",
+    "fn_name": "fn_add_numbers",
+    "args": {
+      "a": 0,
+      "b": 0
+    }
+  },
+  {
+    "prompt": "Reverse the string 'world'",
+    "fn_name": "fn_add_numbers",
+    "args": {
+      "a": 0,
+      "b": 0
+    }
+  },
+  {
+    "prompt": "What is the square root of 16?",
+    "fn_name": "fn_add_numbers",
+    "args": {
+      "a": 0,
+      "b": 0
+    }
+  },
+  {
+    "prompt": "Calculate the square root of 144",
+    "fn_name": "fn_add_numbers",
+    "args": {
+      "a": 0,
+      "b": 0
+    }
+  },
+  {
+    "prompt": "Replace all numbers in \"Hello 34 I'm 233 years old\" with NUMBERS",
+    "fn_name": "fn_add_numbers",
+    "args": {
+      "a": 0,
+      "b": 0
+    }
+  },
+  {
+    "prompt": "Replace all vowels in 'Programming is fun' with asterisks",
+    "fn_name": "fn_add_numbers",
+    "args": {
+      "a": 0,
+      "b": 0
+    }
+  },
+  {
+    "prompt": "Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat'",
+    "fn_name": "fn_add_numbers",
+    "args": {
+      "a": 0,
+      "b": 0
+    }
+  }
+]
