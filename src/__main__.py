@@ -36,6 +36,11 @@ from src.models import (
 )
 from src.vocabulary import Vocabulary
 
+PINK = "\033[95m"
+PURPLE = "\033[35m"
+GRAY = "\033[90m"
+RESET = "\033[0m"
+
 
 def build_results(
     fn_map: Dict[str, FunctionDefinition],
@@ -80,35 +85,43 @@ def main() -> int:
         args = parse_args()
         input_dir, output_path = resolve_paths(args)
 
-        print(f"Loading function definitions from: {input_dir}")
+        print(f"{PINK}→{RESET} Loading function definitions from: {input_dir}")
         fn_map = load_function_definitions(input_dir)
         fn_defs = list(fn_map.values())
-        print(f"  Found {len(fn_defs)} functions: {', '.join(fn_map.keys())}")
+        print(f"{PURPLE}✓{RESET} Loaded {len(fn_defs)} functions")
+        print(f"  {GRAY}{', '.join(fn_map.keys())}{RESET}")
 
-        print(f"Loading prompts from: {input_dir}")
+        print(f"{PINK}→{RESET} Loading prompts from: {input_dir}")
         prompts = load_prompts(input_dir)
-        print(f"  Found {len(prompts)} prompts")
+        print(f"{PURPLE}✓{RESET} Loaded {len(prompts)} prompts")
 
-        print("Initializing LLM model...")
+        print(f"{PINK}→{RESET} Initializing LLM model...")
         model = Small_LLM_Model()
+        print(f"{PURPLE}✓{RESET} Model ready")
 
-        print("Loading vocabulary...")
+        print(f"{PINK}→{RESET} Loading vocabulary...")
         vocab_path = model.get_path_to_vocabulary_json()
         vocab = Vocabulary(vocab_path)
-        print(f"  Vocabulary size: {vocab.size()}")
+        print(f"{PURPLE}✓{RESET} Vocabulary size: {vocab.size()}")
 
-        print("Generating function calls with constrained decoding...")
+        print(f"{PINK}→{RESET} Generating function calls...")
         generated = process_prompts(model, prompts, fn_defs, vocab)
-        print(f"  Generated {len(generated)} function calls")
+        print(f"{PURPLE}✓{RESET} Generated {len(generated)} function calls")
 
         results = build_results(fn_map, prompts, generated)
 
-        print(f"Writing output to: {output_path}")
+        for prompt_entry, func_call in generated:
+            print(f"Prompt: {prompt_entry.prompt}")
+            print(f"Función: {func_call.function}")
+            print(f"Args: {dict(func_call.arguments)}")
+            print("-" * 50)
+
+        print(f"{PINK}→{RESET} Writing output → {output_path}")
         with open(output_path, "w", encoding="utf-8") as f:
             json.dump(results, f, indent=2, ensure_ascii=False)
             f.write("\n")
+        print(f"{PURPLE}✓{RESET} Done")
 
-        print("Done! All prompts processed successfully.")
         return 0
 
     except LoaderError as e:
