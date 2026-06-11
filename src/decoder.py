@@ -17,7 +17,7 @@ from src.models import FunctionDefinition, type_matches
 from src.vocabulary import Vocabulary
 
 
-def is_valid_json_prefix(text: str) -> bool:
+def _is_valid_json_prefix(text: str) -> bool:
     """Check if text is a valid prefix of some complete JSON value.
 
     Uses json.loads with error-position analysis. A string is a valid
@@ -78,7 +78,7 @@ def is_valid_json_prefix(text: str) -> bool:
         return False
 
 
-def get_partial_prefix_state(text: str) -> Dict[str, Any]:
+def _get_partial_prefix_state(text: str) -> Dict[str, Any]:
     """Analyze the partial JSON string to determine generation context.
 
     Examines the string character by character, tracking:
@@ -182,7 +182,7 @@ def get_partial_prefix_state(text: str) -> Dict[str, Any]:
     }
 
 
-def get_expected_first_chars(
+def _get_expected_first_chars(
     state: Dict[str, Any],
     fn_map: Optional[Dict[str, FunctionDefinition]] = None,
 ) -> str:
@@ -318,7 +318,7 @@ def _has_duplicate_keys(text: str) -> bool:
     return has_dupes[0]
 
 
-def matches_function_schema(text: str, fn_map: Dict[str, FunctionDefinition]) -> bool:
+def _matches_function_schema(text: str, fn_map: Dict[str, FunctionDefinition]) -> bool:
     """Validate that text is consistent with the function call schema.
 
     Checks:
@@ -439,7 +439,7 @@ def _validate_incomplete_schema(
     except (json.JSONDecodeError, ValueError):
         pass
 
-    state = get_partial_prefix_state(text)
+    state = _get_partial_prefix_state(text)
     valid_top_keys = {"function", "arguments"}
     depth = state["brace_depth"]
     completed_depth1 = state.get("completed_values", {}).get(1, {})
@@ -568,8 +568,8 @@ class ConstrainedDecoder:
         logits: np.ndarray,
         vocab: Vocabulary,
     ) -> np.ndarray:
-        state = get_partial_prefix_state(self.partial)
-        expected_chars = get_expected_first_chars(state, self.fn_map)
+        state = _get_partial_prefix_state(self.partial)
+        expected_chars = _get_expected_first_chars(state, self.fn_map)
 
         if not expected_chars:
             masked = np.full_like(logits, -np.inf)
@@ -590,8 +590,8 @@ class ConstrainedDecoder:
             if not token_str:
                 continue
             new_partial = self.partial + token_str
-            if is_valid_json_prefix(new_partial):
-                if matches_function_schema(new_partial, self.fn_map):
+            if _is_valid_json_prefix(new_partial):
+                if _matches_function_schema(new_partial, self.fn_map):
                     valid.add(tid)
 
         if not valid:
@@ -604,7 +604,7 @@ class ConstrainedDecoder:
 
         return masked
 
-    def is_complete_call(self, text: str) -> bool:
+    def _is_complete_call(self, text: str) -> bool:
         stripped = text.strip()
         try:
             obj = json.loads(stripped)
@@ -625,7 +625,7 @@ class ConstrainedDecoder:
         return False
 
     def step(self, token_id: int, token_str: str) -> bool:
-        if self.is_complete_call(self.partial):
+        if self._is_complete_call(self.partial):
             return False
 
         if token_id == self.eos_token_id:
@@ -633,7 +633,7 @@ class ConstrainedDecoder:
 
         self.partial += token_str
 
-        if self.is_complete_call(self.partial):
+        if self._is_complete_call(self.partial):
             return False
 
         if len(self.partial) > 500:

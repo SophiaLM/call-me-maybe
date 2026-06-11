@@ -1,5 +1,6 @@
 .PHONY: install run debug clean lint lint-strict
 
+# Variables
 PYTHON = python3
 UV = uv
 SRC_DIR = src
