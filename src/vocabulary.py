@@ -53,7 +53,9 @@ class Vocabulary:
             raise VocabularyError(f"Path is not a file: {path}")
 
         try:
-            raw: Dict[str, str] = json.loads(filepath.read_text(encoding="utf-8"))
+            raw: Dict[str, str] = json.loads(
+                filepath.read_text(encoding="utf-8"),
+            )
         except json.JSONDecodeError as e:
             raise VocabularyError(
                 f"Invalid JSON in vocabulary file: {e}",

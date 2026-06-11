@@ -60,7 +60,8 @@ def validate_function_call_json(
 
     if not isinstance(obj["function"], str):
         raise ValidationError(
-            f"'function' must be a string, got {type(obj['function']).__name__}",
+            "'function' must be a string, "
+            f"got {type(obj['function']).__name__}",
         )
 
     fn_name: str = obj["function"]

@@ -28,7 +28,12 @@ def type_matches(value: Any, expected_type: str) -> bool:
 class ParameterDefinition(BaseModel):
     """Definition of a single parameter for a function."""
 
-    type: str = Field(description="Type of the parameter (string, number, boolean, etc.)")
+    type: str = Field(
+        description=(
+            "Type of the parameter "
+            "(string, number, boolean, etc.)"
+        ),
+    )
 
 
 class ReturnDefinition(BaseModel):
@@ -41,7 +46,9 @@ class FunctionDefinition(BaseModel):
     """Schema for a function definition from the input file."""
 
     name: str = Field(description="Name of the function")
-    description: str = Field(description="Description of what the function does")
+    description: str = Field(
+        description="Description of what the function does",
+    )
     parameters: Dict[str, ParameterDefinition] = Field(
         default_factory=dict,
         description="Dictionary of parameter names to their definitions",

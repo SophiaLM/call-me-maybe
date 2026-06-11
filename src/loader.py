@@ -32,7 +32,8 @@ def load_function_definitions(
         Dictionary mapping function names to their definitions.
 
     Raises:
-        LoaderError: If no valid definitions file is found or content is invalid.
+        LoaderError: If no valid definitions file is found or
+            content is invalid.
     """
     dir_path = Path(input_dir)
     if not dir_path.is_dir():
@@ -64,7 +65,8 @@ def load_function_definitions(
 
     if not isinstance(raw, list):
         raise LoaderError(
-            f"Definitions file must contain a JSON array, got {type(raw).__name__}",
+            "Definitions file must contain a JSON array, "
+            f"got {type(raw).__name__}",
         )
 
     functions: Dict[str, FunctionDefinition] = {}
@@ -149,7 +151,8 @@ def load_prompts(input_dir: str) -> List[PromptEntry]:
                 ) from e
         else:
             raise LoaderError(
-                f"Entry {i} in tests has unexpected type: {type(entry).__name__}",
+                f"Entry {i} in tests has unexpected type: "
+                f"{type(entry).__name__}",
             )
 
     if not prompts:

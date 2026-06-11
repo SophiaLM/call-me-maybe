@@ -9,7 +9,9 @@ from typing import List, Optional, Tuple
 
 
 DEFAULT_INPUT_DIR = os.path.join("data", "input")
-DEFAULT_OUTPUT_PATH = os.path.join("data", "output", "function_calling_results.json")
+DEFAULT_OUTPUT_PATH = os.path.join(
+    "data", "output", "function_calling_results.json",
+)
 
 
 def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
@@ -27,7 +29,10 @@ def parse_args(argv: Optional[List[str]] = None) -> argparse.Namespace:
     """
     parser = argparse.ArgumentParser(
         prog="python -m src",
-        description="Call Me Maybe - LLM Function Calling with Constrained Decoding",
+        description=(
+            "Call Me Maybe - LLM Function Calling "
+            "with Constrained Decoding"
+        ),
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=(
             "Examples:\n"

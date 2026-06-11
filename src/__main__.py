@@ -51,7 +51,10 @@ def build_results(
                 if arg_name in fn_def.parameters:
                     expected_type = fn_def.parameters[arg_name].type
                     if expected_type == "boolean":
-                        args_typed[arg_name] = arg_value if isinstance(arg_value, bool) else bool(arg_value)
+                        if isinstance(arg_value, bool):
+                            args_typed[arg_name] = arg_value
+                        else:
+                            args_typed[arg_name] = bool(arg_value)
                     else:
                         args_typed[arg_name] = arg_value
                 else:

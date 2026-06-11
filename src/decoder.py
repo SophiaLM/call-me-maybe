@@ -17,7 +17,7 @@ from src.models import FunctionDefinition, type_matches
 from src.vocabulary import Vocabulary
 
 
-def _is_valid_json_prefix(text: str) -> bool:
+def is_valid_json_prefix(text: str) -> bool:
     """Check if text is a valid prefix of some complete JSON value.
 
     Uses json.loads with error-position analysis. A string is a valid
@@ -70,7 +70,9 @@ def _is_valid_json_prefix(text: str) -> bool:
             return True
 
         if error_pos == 0:
-            if any(kw.startswith(stripped) for kw in ["true", "false", "null"]):
+            if any(
+                kw.startswith(stripped) for kw in ["true", "false", "null"]
+            ):
                 return True
             if stripped == "-":
                 return True
@@ -78,7 +80,7 @@ def _is_valid_json_prefix(text: str) -> bool:
         return False
 
 
-def _get_partial_prefix_state(text: str) -> Dict[str, Any]:
+def get_partial_prefix_state(text: str) -> Dict[str, Any]:
     """Analyze the partial JSON string to determine generation context.
 
     Examines the string character by character, tracking:
@@ -136,7 +138,10 @@ def _get_partial_prefix_state(text: str) -> Dict[str, Any]:
                     else:
                         pending_key = last_key_at_depth.get(brace_depth, "")
                         if pending_key:
-                            completed_values.setdefault(brace_depth, {})[pending_key] = key
+                            cv = completed_values.setdefault(
+                                brace_depth, {},
+                            )
+                            cv[pending_key] = key
                     after_colon = False
             last_significant = c
             continue
@@ -182,7 +187,7 @@ def _get_partial_prefix_state(text: str) -> Dict[str, Any]:
     }
 
 
-def _get_expected_first_chars(
+def get_expected_first_chars(
     state: Dict[str, Any],
     fn_map: Optional[Dict[str, FunctionDefinition]] = None,
 ) -> str:
@@ -200,7 +205,10 @@ def _get_expected_first_chars(
             return ''
 
         if bd == 2 and not rv and first_char_of_key:
-            fn_name = state.get("completed_values", {}).get(1, {}).get("function", "")
+            fn_name = (
+                state.get("completed_values", {})
+                .get(1, {}).get("function", "")
+            )
             if fn_name and fn_map is not None and fn_name in fn_map:
                 all_params = fn_map[fn_name].parameters
                 used_keys = set(state.get("keys_at_level", {}).get(2, []))
@@ -249,10 +257,21 @@ def _get_expected_first_chars(
             completed_depth1 = state.get("completed_values", {}).get(1, {})
             fn_name = completed_depth1.get("function", "")
             current_key = state.get("last_key_at_depth", {}).get(2, "")
-            if fn_name and fn_map is not None and fn_name in fn_map and current_key:
-                param_def = fn_map[fn_name].parameters.get(current_key)
-                if param_def is not None and param_def.type in ("number", "integer"):
-                    expected = expected.replace('"', '').replace('{', '').replace('[', '')
+            if (
+                fn_name and fn_map is not None
+                and fn_name in fn_map and current_key
+            ):
+                param_def = (
+                    fn_map[fn_name].parameters.get(current_key)
+                )
+                if (
+                    param_def is not None
+                    and param_def.type in ("number", "integer")
+                ):
+                    expected = (
+                        expected.replace('"', '')
+                        .replace('{', '').replace('[', '')
+                    )
         return expected
 
     if last == ',':
@@ -265,10 +284,16 @@ def _get_expected_first_chars(
                 if not remaining_keys:
                     return '}'
             if depth == 2:
-                fn_name = state.get("completed_values", {}).get(1, {}).get("function", "")
+                fn_name = (
+                    state.get("completed_values", {})
+                    .get(1, {}).get("function", "")
+                )
                 if fn_name and fn_map is not None and fn_name in fn_map:
                     used = set(state.get("keys_at_level", {}).get(2, []))
-                    remaining_params = [k for k in fn_map[fn_name].parameters if k not in used]
+                    remaining_params = [
+                        k for k in fn_map[fn_name].parameters
+                        if k not in used
+                    ]
                     if not remaining_params:
                         return '}'
             return ',}'
@@ -280,10 +305,16 @@ def _get_expected_first_chars(
             if {"function", "arguments"}.issubset(closed):
                 return '}0123456789.'
         if depth == 2:
-            fn_name = state.get("completed_values", {}).get(1, {}).get("function", "")
+            fn_name = (
+                state.get("completed_values", {})
+                .get(1, {}).get("function", "")
+            )
             if fn_name and fn_map is not None and fn_name in fn_map:
                 used = set(state.get("keys_at_level", {}).get(2, []))
-                remaining_params = [k for k in fn_map[fn_name].parameters if k not in used]
+                remaining_params = [
+                    k for k in fn_map[fn_name].parameters
+                    if k not in used
+                ]
                 if not remaining_params:
                     return '}0123456789.'
         return ',}0123456789.'
@@ -318,7 +349,9 @@ def _has_duplicate_keys(text: str) -> bool:
     return has_dupes[0]
 
 
-def _matches_function_schema(text: str, fn_map: Dict[str, FunctionDefinition]) -> bool:
+def matches_function_schema(
+    text: str, fn_map: Dict[str, FunctionDefinition],
+) -> bool:
     """Validate that text is consistent with the function call schema.
 
     Checks:
@@ -439,7 +472,7 @@ def _validate_incomplete_schema(
     except (json.JSONDecodeError, ValueError):
         pass
 
-    state = _get_partial_prefix_state(text)
+    state = get_partial_prefix_state(text)
     valid_top_keys = {"function", "arguments"}
     depth = state["brace_depth"]
     completed_depth1 = state.get("completed_values", {}).get(1, {})
@@ -464,16 +497,22 @@ def _validate_incomplete_schema(
             if not "function".startswith(cur):
                 return False
 
-    # (3) In-progress key string at depth 2 (inside arguments): must be arg name prefix
-    if state["in_string"] and not state["reading_value"] and depth == 2:
+    # (3) In-progress key string at depth 2 (inside arguments):
+    #     must be arg name prefix
+    if (
+        state["in_string"] and not state["reading_value"]
+        and depth == 2
+    ):
         cur = state.get("current_key", "")
         if fn_name and fn_name in fn_map:
             param_keys = set(fn_map[fn_name].parameters.keys())
             if cur and not any(k.startswith(cur) for k in param_keys):
                 return False
 
-    # (3.5) In-progress value string for "function": must be prefix of a valid fn name
-    if state["in_string"] and state["reading_value"] and depth == 1:
+    if (
+        state["in_string"] and state["reading_value"]
+        and depth == 1
+    ):
         pending_key = state.get("last_key_at_depth", {}).get(1, "")
         if pending_key == "function":
             cur = state.get("current_key", "")
@@ -568,8 +607,8 @@ class ConstrainedDecoder:
         logits: np.ndarray,
         vocab: Vocabulary,
     ) -> np.ndarray:
-        state = _get_partial_prefix_state(self.partial)
-        expected_chars = _get_expected_first_chars(state, self.fn_map)
+        state = get_partial_prefix_state(self.partial)
+        expected_chars = get_expected_first_chars(state, self.fn_map)
 
         if not expected_chars:
             masked = np.full_like(logits, -np.inf)
@@ -590,8 +629,8 @@ class ConstrainedDecoder:
             if not token_str:
                 continue
             new_partial = self.partial + token_str
-            if _is_valid_json_prefix(new_partial):
-                if _matches_function_schema(new_partial, self.fn_map):
+            if is_valid_json_prefix(new_partial):
+                if matches_function_schema(new_partial, self.fn_map):
                     valid.add(tid)
 
         if not valid:
@@ -604,11 +643,15 @@ class ConstrainedDecoder:
 
         return masked
 
-    def _is_complete_call(self, text: str) -> bool:
+    def is_complete_call(self, text: str) -> bool:
         stripped = text.strip()
         try:
             obj = json.loads(stripped)
-            if isinstance(obj, dict) and "function" in obj and "arguments" in obj:
+            if (
+                isinstance(obj, dict)
+                and "function" in obj
+                and "arguments" in obj
+            ):
                 brace_count = 0
                 in_str = False
                 for c in stripped:
@@ -625,7 +668,7 @@ class ConstrainedDecoder:
         return False
 
     def step(self, token_id: int, token_str: str) -> bool:
-        if self._is_complete_call(self.partial):
+        if self.is_complete_call(self.partial):
             return False
 
         if token_id == self.eos_token_id:
@@ -633,7 +676,7 @@ class ConstrainedDecoder:
 
         self.partial += token_str
 
-        if self._is_complete_call(self.partial):
+        if self.is_complete_call(self.partial):
             return False
 
         if len(self.partial) > 500:
