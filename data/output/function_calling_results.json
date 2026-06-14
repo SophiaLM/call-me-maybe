@@ -3,88 +3,58 @@
     "prompt": "What is the sum of 2 and 3?",
     "fn_name": "fn_add_numbers",
     "args": {
-      "a": 0,
-      "b": 0
+      "a": 2,
+      "b": 3
     }
   },
   {
     "prompt": "What is the sum of 265 and 345?",
     "fn_name": "fn_add_numbers",
     "args": {
-      "a": 0,
-      "b": 0
+      "a": 265,
+      "b": 345
     }
   },
   {
     "prompt": "Greet shrek",
-    "fn_name": "fn_add_numbers",
+    "fn_name": "fn_greet",
     "args": {
-      "a": 0,
-      "b": 0
+      "name": "shrek"
     }
   },
   {
     "prompt": "Greet john",
-    "fn_name": "fn_add_numbers",
+    "fn_name": "fn_greet",
     "args": {
-      "a": 0,
-      "b": 0
+      "name": "john"
     }
   },
   {
     "prompt": "Reverse the string 'hello'",
-    "fn_name": "fn_add_numbers",
+    "fn_name": "fn_reverse_string",
     "args": {
-      "a": 0,
-      "b": 0
+      "s": "hello"
     }
   },
   {
     "prompt": "Reverse the string 'world'",
-    "fn_name": "fn_add_numbers",
+    "fn_name": "fn_reverse_string",
     "args": {
-      "a": 0,
-      "b": 0
+      "s": "world"
     }
   },
   {
     "prompt": "What is the square root of 16?",
-    "fn_name": "fn_add_numbers",
+    "fn_name": "fn_get_square_root",
     "args": {
-      "a": 0,
-      "b": 0
+      "a": 16
     }
   },
   {
     "prompt": "Calculate the square root of 144",
-    "fn_name": "fn_add_numbers",
+    "fn_name": "fn_get_square_root",
     "args": {
-      "a": 0,
-      "b": 0
-    }
-  },
-  {
-    "prompt": "Replace all numbers in \"Hello 34 I'm 233 years old\" with NUMBERS",
-    "fn_name": "fn_add_numbers",
-    "args": {
-      "a": 0,
-      "b": 0
-    }
-  },
-  {
-    "prompt": "Replace all vowels in 'Programming is fun' with asterisks",
-    "fn_name": "fn_add_numbers",
-    "args": {
-      "a": 0,
-      "b": 0
-    }
-  },
-  {
-    "prompt": "Substitute the word 'cat' with 'dog' in 'The cat sat on the mat with another cat'",
-    "fn_name": "fn_add_numbers",
-    "args": {
-      "a": 0,
-      "b": 0
+      "a": 144
     }
   }
 ]

@@ -1,161 +1,170 @@
-"""Input file loading and parsing."""
-
 from __future__ import annotations
 
 import json
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import List, Tuple
 
-from src.errors import LoaderError
-from src.models import FunctionDefinition, PromptEntry
-
-
-DEFINITIONS_FILENAMES = [
-    "functions_definition.json",
-    "function_definitions.json",
-    "functions.json",
-]
+from .models import FunctionDefinition
 
 
-def load_function_definitions(
-    input_dir: str,
-) -> Dict[str, FunctionDefinition]:
-    """Load function definitions from the input directory.
+def load_tests(path: Path) -> List[str]:
+    """Load and validate the test prompts JSON file.
 
-    Tries multiple possible filenames for the definitions file.
-    Validates and indexes function definitions by name.
+    Supports both an array of strings and an array of objects
+    with a 'prompt' key.
 
     Args:
-        input_dir: Path to the input directory.
+        path: Path to the JSON file.
 
     Returns:
-        Dictionary mapping function names to their definitions.
+        List of prompt strings.
 
     Raises:
-        LoaderError: If no valid definitions file is found or
-            content is invalid.
+        FileNotFoundError: If the file does not exist.
+        ValueError: If the JSON is malformed or has wrong structure.
     """
-    dir_path = Path(input_dir)
-    if not dir_path.is_dir():
-        raise LoaderError(f"Input directory not found: {input_dir}")
-
-    definitions_path: Optional[Path] = None
-    for filename in DEFINITIONS_FILENAMES:
-        candidate = dir_path / filename
-        if candidate.is_file():
-            definitions_path = candidate
-            break
-
-    if definitions_path is None:
-        raise LoaderError(
-            f"No definitions file found in {input_dir}. "
-            f"Tried: {', '.join(DEFINITIONS_FILENAMES)}",
-        )
-
+    if not path.exists():
+        raise FileNotFoundError(f"Tests file not found: {path}")
     try:
-        raw = json.loads(definitions_path.read_text(encoding="utf-8"))
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
     except json.JSONDecodeError as e:
-        raise LoaderError(
-            f"Invalid JSON in definitions file '{definitions_path.name}': {e}",
-        ) from e
-    except OSError as e:
-        raise LoaderError(
-            f"Error reading definitions file '{definitions_path.name}': {e}",
-        ) from e
-
-    if not isinstance(raw, list):
-        raise LoaderError(
-            "Definitions file must contain a JSON array, "
-            f"got {type(raw).__name__}",
+        raise ValueError(f"Invalid JSON in tests file '{path}': {e}")
+    if not isinstance(data, list):
+        raise ValueError(
+            f"Expected a JSON array in '{path}', "
+            f"got {type(data).__name__}"
         )
-
-    functions: Dict[str, FunctionDefinition] = {}
-    for i, entry in enumerate(raw):
-        if not isinstance(entry, dict):
-            raise LoaderError(
-                f"Entry {i} in definitions is not a JSON object",
+    tests: List[str] = []
+    for i, item in enumerate(data):
+        if isinstance(item, str):
+            tests.append(item)
+        elif isinstance(item, dict) and "prompt" in item:
+            val = item["prompt"]
+            if isinstance(val, str):
+                tests.append(val)
+            else:
+                raise ValueError(
+                    f"Item at index {i} in '{path}' has "
+                    f"non-string 'prompt': {val!r}"
+                )
+        else:
+            raise ValueError(
+                f"Item at index {i} in '{path}' has "
+                f"unexpected format: {item!r}"
             )
-        if "name" not in entry:
-            raise LoaderError(f"Entry {i} in definitions has no 'name' field")
+    return tests
 
+
+def load_functions(path: Path) -> List[FunctionDefinition]:
+    """Load and validate the function definitions JSON file.
+
+    Args:
+        path: Path to the JSON file.
+
+    Returns:
+        List of validated FunctionDefinition objects.
+
+    Raises:
+        FileNotFoundError: If the file does not exist.
+        ValueError: If the JSON is malformed or has invalid
+            function definitions.
+    """
+    if not path.exists():
+        raise FileNotFoundError(f"Functions file not found: {path}")
+    try:
+        with open(path, encoding="utf-8") as f:
+            data = json.load(f)
+    except json.JSONDecodeError as e:
+        raise ValueError(
+            f"Invalid JSON in functions file '{path}': {e}"
+        )
+    if not isinstance(data, list):
+        raise ValueError(
+            f"Expected a JSON array in '{path}', "
+            f"got {type(data).__name__}"
+        )
+    functions: List[FunctionDefinition] = []
+    for i, item in enumerate(data):
         try:
-            func_def = FunctionDefinition(**entry)
+            fn = FunctionDefinition(**item)
         except Exception as e:
-            raise LoaderError(
-                f"Entry {i} ('{entry.get('name', '?')}') "
-                f"failed validation: {e}",
-            ) from e
-
-        if func_def.name in functions:
-            raise LoaderError(
-                f"Duplicate function name: '{func_def.name}' at entry {i}",
+            raise ValueError(
+                f"Invalid function definition at index {i} "
+                f"in '{path}': {e}"
             )
-        functions[func_def.name] = func_def
-
-    if not functions:
-        raise LoaderError("No function definitions found")
-
+        functions.append(fn)
     return functions
 
 
-def load_prompts(input_dir: str) -> List[PromptEntry]:
-    """Load prompts from the function calling tests file.
+def resolve_input_paths(
+    input_arg: str,
+) -> Tuple[Path, Path]:
+    """Resolve input argument to paths for tests and definitions.
+
+    If input_arg points to a directory, looks for
+    function_calling_tests.json and function_definitions.json (or
+    functions_definition.json) inside.
+
+    If input_arg points to a file, treats it as the tests file
+    and looks for definitions in the same directory.
 
     Args:
-        input_dir: Path to the input directory.
+        input_arg: Path or directory from --input argument.
 
     Returns:
-        List of PromptEntry objects.
+        Tuple of (tests_path, functions_path).
 
     Raises:
-        LoaderError: If the file cannot be found, parsed, or is empty.
+        FileNotFoundError: If no function definitions file is found.
     """
-    dir_path = Path(input_dir)
-    tests_file = dir_path / "function_calling_tests.json"
-
-    if not tests_file.is_file():
-        raise LoaderError(
-            f"Tests file not found: {tests_file}",
-        )
-
-    try:
-        raw = json.loads(tests_file.read_text(encoding="utf-8"))
-    except json.JSONDecodeError as e:
-        raise LoaderError(
-            f"Invalid JSON in tests file '{tests_file.name}': {e}",
-        ) from e
-    except OSError as e:
-        raise LoaderError(
-            f"Error reading tests file '{tests_file.name}': {e}",
-        ) from e
-
-    if not isinstance(raw, list):
-        raise LoaderError(
-            f"Tests file must contain a JSON array, got {type(raw).__name__}",
-        )
-
-    prompts: List[PromptEntry] = []
-    for i, entry in enumerate(raw):
-        if isinstance(entry, str):
-            prompts.append(PromptEntry(prompt=entry))
-        elif isinstance(entry, dict):
-            if "prompt" not in entry:
-                raise LoaderError(
-                    f"Entry {i} in tests is a dict but has no 'prompt' field",
-                )
-            try:
-                prompts.append(PromptEntry(**entry))
-            except Exception as e:
-                raise LoaderError(
-                    f"Entry {i} failed validation: {e}",
-                ) from e
-        else:
-            raise LoaderError(
-                f"Entry {i} in tests has unexpected type: "
-                f"{type(entry).__name__}",
+    input_path = Path(input_arg)
+    fn_candidates: List[str] = [
+        "function_definitions.json",
+        "functions_definition.json",
+    ]
+    if input_path.is_dir():
+        tests_path = input_path / "function_calling_tests.json"
+        fn_path: Path | None = None
+        for candidate in fn_candidates:
+            candidate_path = input_path / candidate
+            if candidate_path.exists():
+                fn_path = candidate_path
+                break
+        if fn_path is None:
+            raise FileNotFoundError(
+                f"No function definitions file found in "
+                f"'{input_path}'. Tried: {fn_candidates}"
             )
+    else:
+        tests_path = input_path
+        parent = input_path.parent
+        fn_path = None
+        for candidate in fn_candidates:
+            candidate_path = parent / candidate
+            if candidate_path.exists():
+                fn_path = candidate_path
+                break
+        if fn_path is None:
+            raise FileNotFoundError(
+                f"No function definitions file found next to "
+                f"'{input_path}'. Tried: {fn_candidates}"
+            )
+    return tests_path, fn_path
 
-    if not prompts:
-        raise LoaderError("No prompts found in tests file")
 
-    return prompts
+def load_all(
+    input_path: str,
+) -> Tuple[List[str], List[FunctionDefinition]]:
+    """Convenience function to load tests and definitions.
+
+    Args:
+        input_path: Path or directory of input files.
+
+    Returns:
+        Tuple of (tests, functions).
+    """
+    tests_path, fn_path = resolve_input_paths(input_path)
+    tests = load_tests(tests_path)
+    functions = load_functions(fn_path)
+    return tests, functions

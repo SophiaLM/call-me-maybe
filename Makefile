@@ -1,28 +1,22 @@
 .PHONY: install run debug clean lint lint-strict
 
-# Variables
-PYTHON = python3
-UV = uv
-SRC_DIR = src
-
 install:
-	$(UV) sync
+	uv sync
 
+ARGS ?= --input data/input --output data/output
 run:
-	$(UV) run $(PYTHON) -m $(SRC_DIR)
+	uv run python -m src
 
 debug:
-	$(UV) run $(PYTHON) -m pdb -m $(SRC_DIR)
+	uv run python -m pdb -m src
 
 clean:
 	rm -rf __pycache__ .mypy_cache .pytest_cache .ruff_cache
-	rm -rf $(SRC_DIR)/__pycache__
-	find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true
+	find . -name "__pycache__" -type d -exec rm -rf {} + 2>/dev/null || true
+	find . -name "*.pyc" -delete
 
 lint:
-	flake8 . --max-line-length=88 --extend-ignore=E501,W503 --exclude=.venv,venv,__pycache__,.mypy_cache,.pytest_cache,llm_sdk,tests
-	mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs --exclude='\.venv|venv|llm_sdk','tests'
+	flake8 . && mypy . --warn-return-any --warn-unused-ignores --ignore-missing-imports --disallow-untyped-defs --check-untyped-defs
 
 lint-strict:
-	flake8 . --max-line-length=88 --extend-ignore=E501,W503 --exclude=.venv,venv,__pycache__,.mypy_cache,.pytest_cache,llm_sdk,tests
-	mypy . --strict --exclude='\.venv|venv|llm_sdk'
+	flake8 . && mypy . --strict

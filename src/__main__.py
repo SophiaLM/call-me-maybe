@@ -1,156 +1,151 @@
-"""Main entry point for the call_me_maybe project.
-
-Orchestrates the full pipeline:
-1. Parse CLI arguments
-2. Load input files (function definitions + prompts)
-3. Initialize the LLM model and vocabulary
-4. Generate function calls using constrained decoding
-5. Validate and write output
-
-Usage:
-    uv run python -m src
-    uv run python -m src --input <file> --output <file>
-"""
-
 from __future__ import annotations
 
+import argparse
 import json
 import sys
-import traceback
+from pathlib import Path
 from typing import Any, Dict, List
 
 from llm_sdk import Small_LLM_Model
 
-from src.cli import parse_args, resolve_paths
-from src.errors import (
-    CallMeMaybeError,
-    GeneratorError,
-    LoaderError,
-    VocabularyError,
-)
-from src.generator import process_prompts
-from src.loader import load_function_definitions, load_prompts
-from src.models import (
-    FunctionDefinition,
-    PromptEntry,
-)
-from src.vocabulary import Vocabulary
-
-PINK = "\033[95m"
-PURPLE = "\033[35m"
-GRAY = "\033[90m"
-RESET = "\033[0m"
+from .args_generator import generate_args
+from .constrained import filter_vocab
+from .function_selector import select_function
+from .loader import load_all
+from .models import FunctionCall
+from .writer import write_output
 
 
-def build_results(
-    fn_map: Dict[str, FunctionDefinition],
-    prompts: List[PromptEntry],
-    generated: List[Any],
-) -> List[Dict[str, Any]]:
-    results: List[Dict[str, Any]] = []
-    for prompt_entry, func_call in generated:
-        args_typed: Dict[str, Any] = {}
-        fn_def = fn_map.get(func_call.function)
-        if fn_def:
-            for arg_name, arg_value in func_call.arguments.items():
-                if arg_name in fn_def.parameters:
-                    expected_type = fn_def.parameters[arg_name].type
-                    if expected_type == "boolean":
-                        if isinstance(arg_value, bool):
-                            args_typed[arg_name] = arg_value
-                        else:
-                            args_typed[arg_name] = bool(arg_value)
-                    else:
-                        args_typed[arg_name] = arg_value
-                else:
-                    args_typed[arg_name] = arg_value
-        else:
-            args_typed = dict(func_call.arguments)
-
-        results.append({
-            "prompt": prompt_entry.prompt,
-            "fn_name": func_call.function,
-            "args": args_typed,
-        })
-    return results
+def _load_vocab(
+    model: Small_LLM_Model,
+) -> Dict[int, str]:
+    raw_path = model.get_path_to_vocabulary_json()
+    with open(raw_path, encoding="utf-8") as f:
+        raw_vocab: Dict[str, int] = json.load(f)
+    id_to_token: Dict[int, str] = {}
+    for token_str, token_id in raw_vocab.items():
+        decoded = (
+            token_str.replace("\u0120", " ")
+            .replace("\u010a", "\n")
+        )
+        id_to_token[int(token_id)] = decoded
+    return id_to_token
 
 
-def main() -> int:
-    """Main execution function.
+def main() -> None:
+    parser = argparse.ArgumentParser(
+        description="Function calling with constrained decoding"
+    )
+    parser.add_argument(
+        "--input",
+        default="data/input",
+        help="Input directory or test file (default: data/input)",
+    )
+    parser.add_argument(
+        "--output",
+        default="data/output",
+        help="Output directory (default: data/output)",
+    )
+    args = parser.parse_args()
 
-    Returns:
-        0 on success, 1 on error.
-    """
     try:
-        args = parse_args()
-        input_dir, output_path = resolve_paths(args)
-
-        print(f"{PINK}→{RESET} Loading function definitions from: {input_dir}")
-        fn_map = load_function_definitions(input_dir)
-        fn_defs = list(fn_map.values())
-        print(f"{PURPLE}✓{RESET} Loaded {len(fn_defs)} functions")
-        print(f"  {GRAY}{', '.join(fn_map.keys())}{RESET}")
-
-        print(f"{PINK}→{RESET} Loading prompts from: {input_dir}")
-        prompts = load_prompts(input_dir)
-        print(f"{PURPLE}✓{RESET} Loaded {len(prompts)} prompts")
-
-        print(f"{PINK}→{RESET} Initializing LLM model...")
+        print("Loading model...", file=sys.stderr)
         model = Small_LLM_Model()
-        print(f"{PURPLE}✓{RESET} Model ready")
-
-        print(f"{PINK}→{RESET} Loading vocabulary...")
-        vocab_path = model.get_path_to_vocabulary_json()
-        vocab = Vocabulary(vocab_path)
-        print(f"{PURPLE}✓{RESET} Vocabulary size: {vocab.size()}")
-
-        print(f"{PINK}→{RESET} Generating function calls...")
-        generated = process_prompts(model, prompts, fn_defs, vocab)
-        print(f"{PURPLE}✓{RESET} Generated {len(generated)} function calls")
-
-        results = build_results(fn_map, prompts, generated)
-
-        for prompt_entry, func_call in generated:
-            print(f"Prompt: {prompt_entry.prompt}")
-            print(f"Función: {func_call.function}")
-            print(f"Args: {dict(func_call.arguments)}")
-            print("-" * 50)
-
-        print(f"{PINK}→{RESET} Writing output → {output_path}")
-        with open(output_path, "w", encoding="utf-8") as f:
-            json.dump(results, f, indent=2, ensure_ascii=False)
-            f.write("\n")
-        print(f"{PURPLE}✓{RESET} Done")
-
-        return 0
-
-    except LoaderError as e:
-        print(f"Error loading input files: {e}", file=sys.stderr)
-        return 1
-    except VocabularyError as e:
-        print(f"Error loading vocabulary: {e}", file=sys.stderr)
-        return 1
-    except GeneratorError as e:
-        print(f"Error during generation: {e}", file=sys.stderr)
-        return 1
-    except CallMeMaybeError as e:
-        print(f"Error: {e}", file=sys.stderr)
-        return 1
-    except NotImplementedError as e:
-        print(
-            f"SDK not available: {e}\n\n"
-            "This project requires the llm_sdk package provided by 42. "
-            "Replace the mock in llm_sdk/ with the real package.",
-            file=sys.stderr,
-        )
-        return 1
+        print("Loading vocabulary...", file=sys.stderr)
+        id_to_token = _load_vocab(model)
+        id_to_token = filter_vocab(id_to_token)
+        print("Loading test data...", file=sys.stderr)
+        tests, functions = load_all(args.input)
     except Exception as e:
-        print(
-            f"Unexpected error: {e}\n{traceback.format_exc()}",
-            file=sys.stderr,
-        )
-        return 1
+        print(f"ERROR: {e}", file=sys.stderr)
+        sys.exit(1)
+
+    output_path = Path(args.output)
+    results: List[FunctionCall] = []
+
+    total = len(tests)
+    print(
+        f"Processing {total} prompts...\n", file=sys.stderr
+    )
+
+    for i, prompt in enumerate(tests, 1):
+        if not prompt or not prompt.strip():
+            results.append(
+                FunctionCall(
+                    prompt=prompt, fn_name="", args={}
+                )
+            )
+            continue
+
+        try:
+            fn_name = select_function(
+                model, prompt, functions,
+                id_to_token,
+            )
+            if fn_name is None:
+                print(
+                    f"WARNING: Could not select function "
+                    f"for: {prompt[:50]}...",
+                    file=sys.stderr,
+                )
+                results.append(
+                    FunctionCall(
+                        prompt=prompt, fn_name="", args={}
+                    )
+                )
+                continue
+
+            fn_def = next(
+                f for f in functions if f.name == fn_name
+            )
+            args_json = generate_args(
+                model, prompt, fn_def,
+                id_to_token,
+            )
+            if args_json is None:
+                print(
+                    f"WARNING: Could not generate args for "
+                    f"{fn_name} for: {prompt[:50]}...",
+                    file=sys.stderr,
+                )
+                results.append(
+                    FunctionCall(
+                        prompt=prompt, fn_name=fn_name,
+                        args={},
+                    )
+                )
+                continue
+
+            parsed_args: Dict[str, Any] = json.loads(args_json)
+            results.append(
+                FunctionCall(
+                    prompt=prompt,
+                    fn_name=fn_name,
+                    args=parsed_args,
+                )
+            )
+            print(
+                f"  [{i}/{total}] {prompt[:40]}... "
+                f"-> {fn_name}",
+                file=sys.stderr,
+            )
+        except Exception as exc:
+            print(
+                f"ERROR processing '{prompt[:50]}...': {exc}",
+                file=sys.stderr,
+            )
+            results.append(
+                FunctionCall(
+                    prompt=prompt, fn_name="", args={}
+                )
+            )
+
+    try:
+        write_output(results, output_path)
+    except Exception as e:
+        print(f"ERROR writing output: {e}", file=sys.stderr)
+        sys.exit(1)
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()

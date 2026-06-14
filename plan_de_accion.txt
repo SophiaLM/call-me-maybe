@@ -1,0 +1,436 @@
+================================================================
+     PLAN DE ACCIÓN — call me maybe
+     Introducción a las llamadas a función en LLMs
+================================================================
+
+Guía completa para implementar function calling con constrained
+decoding en Python 3.10+
+
+----------------------------------------------------------------
+RESTRICCIONES IMPORTANTES
+----------------------------------------------------------------
+- PROHIBIDO: dspy, pytorch, transformers, huggingface, outlines
+- No usar métodos privados de llm_sdk
+- No hardcodear soluciones basadas en los ejemplos dados
+- Todas las clases DEBEN usar Pydantic para validación
+- El LLM debe elegir la función (no heurísticas)
+- Solo se puede usar: numpy, json, pydantic
+
+FLUJO CLAVE:
+  prompt en lenguaje natural
+    → LLM elige función (constrained decoding)
+    → LLM genera argumentos (constrained decoding)
+    → JSON válido al 100%
+
+================================================================
+ÁRBOL DE ARCHIVOS OBJETIVO
+================================================================
+
+call-me-maybe/
+├── src/
+│   ├── __main__.py          ← entry point (argparse)
+│   ├── __init__.py
+│   ├── models.py            ← Pydantic models
+│   ├── loader.py            ← leer/validar JSONs de entrada
+│   ├── constrained.py       ← motor de constrained decoding
+│   ├── function_selector.py ← LLM elige qué función llamar
+│   ├── args_generator.py    ← LLM genera los argumentos
+│   └── writer.py            ← escribir output JSON
+├── llm_sdk/                 ← copiado del paquete proporcionado
+├── data/
+│   └── input/
+│       ├── function_calling_tests.json
+│       └── function_definitions.json
+├── pyproject.toml
+├── uv.lock
+├── Makefile
+├── .gitignore
+└── README.md
+
+NOTA: NO incluir el directorio output/ en el repositorio.
+Se generará durante la evaluación.
+
+================================================================
+FASE 0 — CONFIGURACIÓN DEL ENTORNO (~30 min)
+================================================================
+
+[OBLIGATORIO] Crear estructura de directorios
+  - Crear carpetas: src/, data/input/, llm_sdk/
+  - Añadir __init__.py y __main__.py vacíos en src/
+
+[OBLIGATORIO] Inicializar pyproject.toml con uv
+  - Ejecutar: uv init
+  - Añadir dependencias: pydantic, numpy (Python ≥ 3.10)
+  → uv add pydantic numpy
+  → Copiar llm_sdk/ en la raíz del proyecto
+  → Verificar que "uv sync" funciona sin errores
+
+[OBLIGATORIO] Crear Makefile con las siguientes reglas:
+  - install : instalar dependencias con uv
+  - run     : uv run python -m src
+  - debug   : uv run python -m pdb -m src
+  - clean   : eliminar __pycache__, .mypy_cache, etc.
+  - lint    : flake8 . && mypy . --warn-return-any
+               --warn-unused-ignores --ignore-missing-imports
+               --disallow-untyped-defs --check-untyped-defs
+  - lint-strict (opcional): flake8 . && mypy . --strict
+
+Crear .gitignore
+  - Excluir: __pycache__, .mypy_cache, .venv, output/, *.pyc
+
+================================================================
+FASE 1 — MODELOS PYDANTIC Y CARGA DE DATOS (~1h)
+================================================================
+
+[OBLIGATORIO] models.py — Clases Pydantic
+  Definir todas las estructuras de datos del proyecto:
+
+  FunctionParameter:
+    - name: str
+    - type: str  ("number", "string", "boolean", ...)
+
+  FunctionDefinition:
+    - name: str
+    - description: str
+    - parameters: dict[str, FunctionParameter]
+    - returns: dict
+
+  FunctionCall (estructura de salida):
+    - prompt: str
+    - fn_name: str
+    - args: dict  (con tipos correctos según el esquema)
+
+  InputData:
+    - tests: list[str]
+    - functions: list[FunctionDefinition]
+
+[OBLIGATORIO] loader.py — Carga y validación de archivos
+  Leer function_calling_tests.json y function_definitions.json
+  con manejo robusto de errores.
+
+  Casos a manejar:
+  → Archivo no existe
+  → JSON inválido (malformado)
+  → Esquema incorrecto o inesperado
+  → Usar context managers: "with open(...) as f:"
+  → Devolver errores claros al usuario (nunca crash silencioso)
+  → Soportar rutas custom via --input y --output
+
+================================================================
+FASE 2 — MOTOR DE CONSTRAINED DECODING (núcleo) (~4-6h)
+================================================================
+
+Esta es la parte más importante del proyecto. Invertir aquí
+el mayor tiempo.
+
+--------------------------------------------------------------
+PASO 2.1 — Explorar el vocabulario del modelo
+--------------------------------------------------------------
+[CLAVE] Usar llm_sdk.get_path_to_vocabulary_json() para cargar
+el vocabulario. Entender la estructura: dict token_id → string.
+
+Tareas:
+  → Leer el JSON de vocabulario
+  → Construir dos mappings: id→str y str→id
+  → Identificar qué tokens corresponden a:
+     '{', '}', '"', ':', ',', dígitos, letras, punto decimal
+  → Comprobar si hay tokens multi-caracter
+     (ej: el token "fn_" podría existir como uno solo)
+
+NOTA: Este paso de exploración es PREVIO a escribir el
+constraining. Sin entender el vocab, no se puede hacer bien.
+
+--------------------------------------------------------------
+PASO 2.2 — constrained.py — Máquina de estados JSON
+--------------------------------------------------------------
+[OBLIGATORIO] Implementar una máquina de estados que, en cada
+posición de la generación, sabe qué tokens son válidos para
+continuar produciendo JSON válido conforme al esquema.
+
+Estados posibles (ejemplo):
+  - START              → espera '{'
+  - IN_KEY             → generando una clave de objeto
+  - AFTER_KEY          → espera ':'
+  - IN_VALUE_STRING    → generando valor de tipo string
+  - IN_VALUE_NUMBER    → generando valor de tipo number
+  - IN_VALUE_BOOL      → espera 'true' o 'false'
+  - BETWEEN_FIELDS     → espera ',' o '}'
+  - DONE               → JSON completo
+
+Funciones a implementar:
+  get_valid_tokens(state, partial_output, schema) → list[int]
+    Devuelve los token_ids permitidos en el estado actual.
+
+  mask_logits(logits, valid_token_ids) → logits_masked
+    Pone -inf en todos los tokens no válidos.
+    (logits es un numpy array o Tensor)
+
+IMPORTANTE: La restricción no es solo JSON sintácticamente
+válido. También debe respetar el esquema:
+  - fn_name debe ser uno de los nombres disponibles
+  - Los valores de args deben ser del tipo correcto
+    según function_definitions.json
+
+--------------------------------------------------------------
+PASO 2.3 — Loop de generación token a token
+--------------------------------------------------------------
+[OBLIGATORIO] El proceso central del sistema:
+
+  1. encode(prompt) → input_ids (list[int])
+  2. Convertir a Tensor para get_logits_from_input_ids
+  3. Aplicar mask_logits según el estado actual del parser
+  4. Seleccionar el token con mayor logit (argmax)
+  5. Añadir token a input_ids y al output parcial
+  6. Actualizar el estado del parser con el token elegido
+  7. Repetir desde el paso 2 hasta alcanzar estado DONE
+
+Condición de parada: cuando el JSON está completo
+(el parser llega al estado DONE, normalmente al cerrar '}'.
+
+================================================================
+FASE 3 — SELECCIÓN DE FUNCIÓN Y GENERACIÓN DE ARGUMENTOS (~2-3h)
+================================================================
+
+[OBLIGATORIO] function_selector.py — El LLM elige la función
+
+  El LLM debe elegir qué función llamar.
+  NO usar heurísticas: la selección viene del modelo.
+
+  Estrategia:
+  → Construir prompt que muestre funciones disponibles:
+    "Given these functions: [lista nombres y descripciones],
+     which function should be called for: [prompt del usuario]?
+     Answer with only the function name."
+  → Al generar la respuesta, los tokens válidos son ÚNICAMENTE
+    los que pueden formar uno de los nombres de función
+    disponibles en function_definitions.json
+  → Esto garantiza que fn_name siempre será un nombre válido
+
+  Ventaja: el modelo "elige" semánticamente, pero el constraining
+  garantiza que el resultado sea siempre parseable.
+
+[OBLIGATORIO] args_generator.py — El LLM genera los argumentos
+
+  Una vez elegida la función, generar el objeto JSON de args
+  usando constrained decoding con el esquema exacto.
+
+  Restricciones por tipo de parámetro:
+  → "number"  : solo tokens de dígitos, punto decimal, signo
+  → "string"  : cualquier texto válido entre comillas dobles
+  → "boolean" : restringir a tokens "true" o "false" únicamente
+  → Asegurar que TODOS los parámetros requeridos se incluyen
+
+================================================================
+FASE 4 — ORQUESTACIÓN PRINCIPAL Y SALIDA (~1h)
+================================================================
+
+[OBLIGATORIO] __main__.py — Entry point con argparse
+
+  Comando de ejecución:
+    uv run python -m src [--input <ruta>] [--output <ruta>]
+
+  Defaults:
+    --input  → data/input/
+    --output → data/output/
+
+  Flujo:
+  → Parsear argumentos --input y --output
+  → Inicializar Small_LLM_Model del llm_sdk
+  → Cargar datos de entrada (loader.py)
+  → Para cada prompt:
+      function_selector → args_generator → FunctionCall
+  → Capturar errores por prompt (si falla uno, continuar)
+  → Escribir resultados (writer.py)
+
+[OBLIGATORIO] writer.py — Escribir output JSON
+
+  → Crear directorio output/ si no existe
+  → Serializar lista de FunctionCall con json.dump(indent=2)
+  → Archivo: data/output/function_calling_results.json
+  → Verificar que el JSON sea válido (sin comas finales)
+
+  Formato de salida esperado:
+  [
+    {
+      "prompt": "What is the sum of 2 and 3?",
+      "fn_name": "fn_add_numbers",
+      "args": {"a": 2.0, "b": 3.0}
+    },
+    {
+      "prompt": "Reverse the string 'hello'",
+      "fn_name": "fn_reverse_string",
+      "args": {"s": "hello"}
+    }
+  ]
+
+================================================================
+FASE 5 — CALIDAD: TYPE HINTS, DOCSTRINGS Y LINT (~1-2h)
+================================================================
+
+[OBLIGATORIO — mypy sin errores] Type hints completos
+  - Añadir tipos en parámetros, retornos y variables
+  - Usar: List, Dict, Optional, Tuple, Union del módulo typing
+  - Ejecutar: mypy . --disallow-untyped-defs --check-untyped-defs
+  - Corregir todos los errores hasta que pase limpio
+
+[OBLIGATORIO — PEP 257] Docstrings en funciones y clases
+  - Estilo Google o NumPy
+  - Documentar: propósito, Args, Returns, Raises
+
+[OBLIGATORIO] Pasar flake8 sin errores
+  - Revisar líneas largas (max 79 caracteres)
+  - Revisar imports, espaciado, nombres
+  - Ejecutar: make lint
+
+================================================================
+PHASE 6 — TESTING AND VALIDATION (~1h)
+================================================================
+
+All tests run exclusively using the files inside data/input/.
+No external frameworks or additional fixtures are used.
+
+Run command for all tests:
+  uv run python -m src
+  (reads from data/input/ and writes to data/output/ by default)
+
+Or with explicit paths:
+  uv run python -m src --input data/input/ --output data/output/
+
+--------------------------------------------------------------
+[NOT SUBMITTED] Edge cases — add to data/input/ to test
+--------------------------------------------------------------
+Add these cases to function_calling_tests.json one by one
+and verify the output generated in data/output/:
+
+  → Empty string:
+      ""
+
+  → Very large or negative number:
+      "What is the factorial of -1?"
+      "Add 999999999 and 0.000001"
+
+  → Special characters:
+      "Reverse the string 'café ñoño'"
+
+  → Ambiguous prompt (does not match any function well):
+      "Do something useful"
+
+  → Functions with multiple parameters of the same type:
+      add a function with three "number" parameters in
+      function_definitions.json and test with a prompt
+
+To test invalid JSON input or missing file:
+  → Temporarily corrupt function_calling_tests.json
+    (remove a bracket, add a trailing comma)
+  → Rename the file to simulate it does not exist
+  → Verify the program prints a clear error and does NOT crash
+
+--------------------------------------------------------------
+[MANDATORY] Verify output JSON after each run
+--------------------------------------------------------------
+  → File data/output/function_calling_results.json exists
+  → JSON is parseable: python -c "import json; json.load(open('data/output/function_calling_results.json'))"
+  → Correct keys in each object: prompt, fn_name, args
+    (exactly these three, no extras)
+  → fn_name matches a name from function_definitions.json
+  → Arg types match the types defined in the schema
+  → No free text or additional keys in any object
+
+--------------------------------------------------------------
+[PERFORMANCE] Verify speed
+--------------------------------------------------------------
+  → Process all prompts from data/input/ in < 5 minutes
+  → If slow, review the token-by-token generation loop
+  → Target: >95% correct function and argument selection
+
+================================================================
+FASE 7 — README.md COMPLETO (~1h)
+================================================================
+
+[OBLIGATORIO — evaluado en peer review]
+
+Estructura mínima:
+  → Primera línea en cursiva:
+    "Este proyecto ha sido creado como parte del
+     currículo de 42 por <login>"
+  → Sección "Descripción": objetivo y visión general
+  → Sección "Instrucciones":
+      uv sync
+      make run
+      uv run python -m src --input data/input/ --output data/output/
+  → Sección "Recursos": documentación, artículos, uso de IA
+
+Secciones adicionales REQUERIDAS para este proyecto:
+  → Explicación del algoritmo de constrained decoding (detallada)
+  → Decisiones de diseño (por qué cada elección técnica)
+  → Análisis de rendimiento (precisión, velocidad, fiabilidad)
+  → Retos encontrados y cómo se resolvieron
+  → Estrategia de pruebas
+  → Ejemplos de uso con comandos reales
+
+================================================================
+ORDEN RECOMENDADO DE IMPLEMENTACIÓN
+================================================================
+
+  1. Fase 0  → Entorno y estructura
+  2. Fase 1  → Modelos Pydantic + loader
+  3. Fase 2a → Explorar vocabulario del modelo
+  4. Fase 2b → Loop básico de generación SIN constraining
+               (verificar que el SDK funciona)
+  5. Fase 2c → Añadir constraining para fn_name
+  6. Fase 2d → Añadir constraining para args (por tipo)
+  7. Fase 3  → function_selector + args_generator
+  8. Fase 4  → __main__.py + writer.py
+  9. Fase 5  → Type hints, docstrings, lint
+  10. Fase 6 → Tests y validación
+  11. Fase 7 → README.md
+
+================================================================
+CONCEPTO CLAVE: CÓMO FUNCIONA EL CONSTRAINING
+================================================================
+
+1. Cargar el vocabulario con get_path_to_vocabulary_json()
+   y construir un mapa: token_id → string
+
+2. Cuando el LLM va a generar el siguiente token,
+   obtener los logits: get_logits_from_input_ids(input_ids)
+
+3. Según la posición actual en la estructura JSON
+   (¿esperando nombre de función? ¿valor numérico? ¿clave?),
+   calcular qué token_ids son sintácticamente válidos.
+
+4. Poner -inf en los logits de todos los tokens NO válidos.
+
+5. Hacer argmax → el token elegido SIEMPRE es válido.
+
+DOS USOS DISTINTOS en este proyecto:
+  - Para fn_name: solo permites tokens que formen uno de los
+    nombres de función disponibles (selección viene del LLM)
+  - Para args: restringes según el tipo de cada parámetro
+    · number  → dígitos y punto decimal
+    · string  → texto libre entre comillas
+    · boolean → tokens "true" o "false"
+
+Lo más difícil: la máquina de estados del parser JSON y
+mapear bien los tokens multi-caracter del vocabulario.
+Empezar siempre explorando el fichero de vocab.
+
+================================================================
+CHECKLIST FINAL ANTES DE ENTREGAR
+================================================================
+
+[ ] uv sync funciona sin errores
+[ ] make run ejecuta correctamente
+[ ] make lint pasa sin errores (flake8 + mypy)
+[ ] Output JSON válido y parseable
+[ ] Claves del output: prompt, fn_name, args (exactas)
+[ ] Tipos de args coinciden con function_definitions.json
+[ ] Manejo de errores en todos los casos edge
+[ ] El programa NUNCA crashea de forma inesperada
+[ ] NO está incluido el directorio output/ en el repo
+[ ] README.md completo con todas las secciones requeridas
+[ ] .gitignore correcto
+[ ] Docstrings en todas las funciones y clases
+[ ] Type hints completos en todo el código
+
+================================================================

@@ -3,7 +3,10 @@ name = "llm-sdk"
 version = "0.1.0"
 description = "LLM SDK mock for call_me_maybe"
 requires-python = ">=3.10"
-dependencies = []
+dependencies = [
+    "torch",
+    "transformers",
+]
 
 [build-system]
 requires = ["hatchling"]
