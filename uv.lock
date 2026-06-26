@@ -51,7 +51,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "llm-sdk", editable = "llm_sdk" },
+    { name = "llm-sdk", editable = "llm_sdk/llm_sdk" },
     { name = "numpy" },
     { name = "pydantic", specifier = ">=2.0" },
 ]
@@ -300,16 +300,18 @@ wheels = [
 [[package]]
 name = "llm-sdk"
 version = "0.1.0"
-source = { editable = "llm_sdk" }
+source = { editable = "llm_sdk/llm_sdk" }
 dependencies = [
+    { name = "huggingface-hub" },
     { name = "torch" },
     { name = "transformers" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "torch" },
-    { name = "transformers" },
+    { name = "huggingface-hub", specifier = ">=0.20.0" },
+    { name = "torch", specifier = ">=2.0.0" },
+    { name = "transformers", specifier = ">=4.40.0" },
 ]
 
 [[package]]

@@ -29,7 +29,7 @@ def generate_args(
     id_to_token: Dict[int, str],
 ) -> Optional[str]:
     prompt = _build_prompt(fn_def, user_prompt)
-    input_ids = model.encode(prompt)
+    input_ids = model.encode(prompt).tolist()[0]
     constraint = ArgsConstraint(fn_def.parameters)
     result = generate(
         model, input_ids, constraint, id_to_token,

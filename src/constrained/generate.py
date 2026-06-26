@@ -35,10 +35,9 @@ def generate(
     id_to_token: Dict[int, str],
     max_tokens: int = 150,
 ) -> Optional[str]:
-    past_key_values = None
-    first_step = True
     token_id = 0
 
+    _debug_print("[", end="")
     for step in range(max_tokens):
         valid_ids = constraint.valid_token_ids(id_to_token)
         if not valid_ids:
@@ -47,17 +46,8 @@ def generate(
                 return _extract_best_match(constraint)
             return None
 
-        if first_step:
-            inp = np.array(input_ids, dtype=np.int64)
-        else:
-            inp = np.array([token_id], dtype=np.int64)
-
-        logits, past_key_values = model.get_logits_from_input_ids(
-            inp, past_key_values=past_key_values
-        )
-        logits = np.asarray(logits, dtype=np.float32)
-        if logits.ndim == 2:
-            logits = logits[0]
+        logits_raw = model.get_logits_from_input_ids(input_ids)
+        logits = np.array(logits_raw, dtype=np.float32)
 
         masked = mask_logits(logits, valid_ids)
         token_id = int(np.argmax(masked))
@@ -65,12 +55,9 @@ def generate(
         if not token_str:
             _debug_print("]")
             return _extract_best_match(constraint)
-        if step == 0:
-            _debug_print("[", end="")
         _debug_print(".", end="")
         constraint.advance_str(token_str)
         input_ids.append(token_id)
-        first_step = False
 
         if constraint.is_complete():
             _debug_print("]")

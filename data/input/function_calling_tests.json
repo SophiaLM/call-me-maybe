@@ -18,10 +18,10 @@
     "prompt": "Reverse the string 'world'"
   },
   {
-    "prompt": "What is the square root of 16?"
+    "prompt": "What is the square root of 1600000000?"
   },
   {
-    "prompt": "Calculate the square root of 144"
+    "prompt": "Calculate the square root of 144000000"
   },
   {
     "prompt": "Replace all numbers in \"Hello 34 I'm 233 years old\" with NUMBERS"

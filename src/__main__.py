@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 from typing import Any, Dict, List
 
@@ -16,10 +17,10 @@ from .models import FunctionCall
 from .writer import write_output
 
 
-def _load_vocab(
+def load_vocab(
     model: Small_LLM_Model,
 ) -> Dict[int, str]:
-    raw_path = model.get_path_to_vocabulary_json()
+    raw_path = model.get_path_to_vocab_file()
     with open(raw_path, encoding="utf-8") as f:
         raw_vocab: Dict[str, int] = json.load(f)
     id_to_token: Dict[int, str] = {}
@@ -48,11 +49,13 @@ def main() -> None:
     )
     args = parser.parse_args()
 
+    start = time.perf_counter()
+
     try:
         print("Loading model...", file=sys.stderr)
         model = Small_LLM_Model()
         print("Loading vocabulary...", file=sys.stderr)
-        id_to_token = _load_vocab(model)
+        id_to_token = load_vocab(model)
         id_to_token = filter_vocab(id_to_token)
         print("Loading test data...", file=sys.stderr)
         tests, functions = load_all(args.input)
@@ -139,6 +142,15 @@ def main() -> None:
                     prompt=prompt, fn_name="", args={}
                 )
             )
+
+    elapsed = time.perf_counter() - start
+
+    minutes = int(elapsed // 60)
+
+    print(
+        f"Done in {minutes:.2f} minutes",
+        file=sys.stderr
+    )
 
     try:
         write_output(results, output_path)

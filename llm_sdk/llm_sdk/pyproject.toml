@@ -1,11 +1,12 @@
 [project]
 name = "llm-sdk"
 version = "0.1.0"
-description = "LLM SDK mock for call_me_maybe"
+description = "LLM SDK for local model inference"
 requires-python = ">=3.10"
 dependencies = [
-    "torch",
-    "transformers",
+    "torch>=2.0.0",
+    "transformers>=4.40.0",
+    "huggingface-hub>=0.20.0",
 ]
 
 [build-system]

@@ -56,7 +56,7 @@ def select_function(
     id_to_token: Dict[int, str],
 ) -> Optional[str]:
     prompt = _build_prompt(functions, user_prompt)
-    input_ids = model.encode(prompt)
+    input_ids = model.encode(prompt).tolist()[0]
     valid_names = [fn.name for fn in functions]
     constraint = FunctionNameConstraint(valid_names)
     result = generate(

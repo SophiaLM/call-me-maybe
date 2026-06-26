@@ -14,7 +14,7 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.uv.sources]
-llm-sdk = { path = "llm_sdk", editable = true }
+llm-sdk = { path = "llm_sdk/llm_sdk", editable = true }
 
 [tool.mypy]
 ignore_missing_imports = true
